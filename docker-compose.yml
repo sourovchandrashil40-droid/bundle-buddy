@@ -1,0 +1,37 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: bundle_buddy
+      MYSQL_USER: bundle
+      MYSQL_PASSWORD: bundle
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && python manage.py seed_demo && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
+    env_file: .env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Releases expired reservations once a minute (a cron job would do the same).
+  worker:
+    build: .
+    command: sh -c "while true; do python manage.py release_expired_reservations; sleep 60; done"
+    env_file: .env.example
+    depends_on:
+      web:
+        condition: service_started
